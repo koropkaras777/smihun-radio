@@ -1,15 +1,9 @@
 // Завантаження змінних оточення з файлу .env
 require('dotenv').config();
 
-const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
-const cors = require('cors');
-const app = express();
-
-// Використовуємо process.env.PORT з fallback на 3000, якщо порт не вказаний
-const port = process.env.PORT || 3000;
 
 // Функція для форматування часу в "хв:сек" (наприклад, "1:12")
 function formatTime(seconds) {
@@ -34,9 +28,9 @@ const getPlaylist = () => {
     .map(file => path.join(musicDir, file));
 };
 
-// Зберігаємо тривалість кожного треку
+// Глобальні змінні
 let trackDurations = {};
-let playlist = getPlaylist();
+let playlist = shuffleArray([...getPlaylist()]); // Ініціалізуємо перемішаний плейлист
 let currentTrack = 0;
 let isPlaying = false;
 let currentTrackName = playlist.length > 0 ? path.basename(playlist[currentTrack], '.mp3') : 'Немає треків';
@@ -71,7 +65,7 @@ function startAutoplay() {
       // Якщо досягнуто кінця плейлиста, перемішуємо його і скидаємо currentTrack
       playlist = shuffleArray([...getPlaylist()]); // Створюємо нову копію плейлиста і перемішуємо
       currentTrack = 0;
-      trackDurations = {}; // Очищаємо кеш тривалостей, щоб повторно отримати їх для нового порядку
+      trackDurations = {}; // Очищаємо кеш тривалостей для нового порядку
     }
 
     const track = playlist[currentTrack];
@@ -81,8 +75,6 @@ function startAutoplay() {
     getTrackDuration(track, (duration) => {
       trackDurations[track] = duration;
       console.log(`Автовідтворення: ${currentTrackName} (тривалість: ${formatTime(duration)})`);
-
-      const stream = fs.createReadStream(track);
 
       isPlaying = true;
       currentPlaybackTime = 0; // Скидаємо поточний час на початок
@@ -112,141 +104,27 @@ function startAutoplay() {
         }
       }, 1000); // Кожну секунду
 
-      autoplayProcess = ffmpeg(stream)
-        .format('mp3')
-        .on('start', () => {
-          console.log(`Початок відтворення: ${currentTrackName}`);
-        })
-        .on('end', () => {
-          console.log(`Завершення відтворення: ${currentTrackName} (нормально)`);
-          isPlaying = false;
-          currentPlaybackTime = 0; // Скидаємо час після завершення
-          if (playbackTimer) {
-            clearInterval(playbackTimer);
-            playbackTimer = null; // Скидаємо посилання на таймер
-            console.log('Таймер очищено після завершення треку');
-          }
-          currentTrack++;
-          // Повторно викликаємо playNextTrack для забезпечення переходу
-          setTimeout(() => playNextTrack(), 100); // Невелика затримка для стабільності
-        })
-        .on('error', (err) => {
-          console.error('Помилка автовидворення:', err);
-          isPlaying = false;
-          currentPlaybackTime = 0; // Скидаємо час при помилці
-          if (playbackTimer) {
-            clearInterval(playbackTimer);
-            playbackTimer = null; // Скидаємо посилання на таймер
-            console.log('Таймер очищено після помилки');
-          }
-          currentTrack++;
-          // Повторно викликаємо playNextTrack для забезпечення переходу
-          setTimeout(() => playNextTrack(), 100); // Невелика затримка для стабільності
-        })
-        .on('close', () => {
-          console.log(`Закриття потоку для ${currentTrackName} (можливо, через помилку)`);
-          if (isPlaying) {
-            console.log('Потік закрито під час відтворення — спроба відновити');
-            isPlaying = false;
-            currentPlaybackTime = 0; // Скидаємо час
-            if (playbackTimer) {
-              clearInterval(playbackTimer);
-              playbackTimer = null; // Скидаємо посилання на таймер
-              console.log('Таймер очищено після закриття потоку');
-            }
-            currentTrack++;
-            // Повторно викликаємо playNextTrack для забезпечення переходу
-            setTimeout(() => playNextTrack(), 100); // Невелика затримка для стабільності
-          }
-        });
+      // Зберігаємо поточний процес для внутрішнього відстеження, але не запускаємо тут стрімінг для Vercel
+      autoplayProcess = {
+        track,
+        duration,
+      };
     });
   };
 
   playNextTrack();
 }
 
-// Ендпоінт для стрімінгу (підключення до поточного потоку без перезапуску)
-app.get('/stream', (req, res) => {
-  res.set({
-    'Content-Type': 'audio/mpeg',
-    'Transfer-Encoding': 'chunked',
-    'Access-Control-Allow-Origin': '*', // Додаємо заголовок CORS для стріму
-  });
-
-  if (playlist.length === 0) {
-    res.end('У папці music немає MP3-файлів');
-    return;
-  }
-
-  // Завжди підключаємо клієнта до поточного треку, який відтворюється, не перезапускаючи автовидворення
-  const track = playlist[currentTrack];
-  const stream = fs.createReadStream(track);
-
-  ffmpeg(stream)
-    .format('mp3')
-    .on('error', (err) => {
-      console.error('Помилка стрімінгу для клієнта:', err);
-      res.end();
-    })
-    .pipe(res)
-    .on('close', () => {
-      console.log('Клієнт від’єднався від стріму');
-      // Не впливаємо на автовидворення при від’єднанні клієнта
-    });
-});
-
-// Ендпоінт для отримання назви поточного треку
-app.get('/current-track', (req, res) => {
-  res.set({
-    'Access-Control-Allow-Origin': '*', // Додаємо заголовок CORS для цього ендпоінту
-  });
-
-  if (playlist.length === 0) {
-    res.json({ track: 'Немає треків' });
-  } else {
-    res.json({ track: currentTrackName });
-  }
-});
-
-// Ендпоінт для отримання поточного часу відтворення та тривалості
-app.get('/playback-time', (req, res) => {
-  res.set({
-    'Access-Control-Allow-Origin': '*', // Додаємо заголовок CORS для цього ендпоінту
-  });
-
-  if (playlist.length === 0) {
-    res.json({ currentTime: 0, totalTime: 0, track: 'Немає треків' });
-  } else {
-    const track = playlist[currentTrack];
-    const totalTime = trackDurations[track] || 0;
-    res.json({ currentTime: currentPlaybackTime, totalTime: totalTime, track: currentTrackName });
-  }
-});
-
-// Ендпоінт для зображення логотипу
-app.get('/logo', (req, res) => {
-  const logoPath = './images/radio-logo.png'; // Шлях до зображення (зміни на потрібний формат, наприклад, .jpg)
-  if (fs.existsSync(logoPath)) {
-    res.set({
-      'Content-Type': 'image/png', // Зміни на 'image/jpeg', якщо файл .jpg
-      'Access-Control-Allow-Origin': '*', // Додаємо заголовок CORS для зображення
-    });
-    fs.createReadStream(logoPath).pipe(res);
-  } else {
-    res.status(404).send('Зображення логотипу не знайдено');
-  }
-});
-
-app.use(cors({
-  origin: '*', // Дозволяє запити з будь-якого джерела для локального тестування
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-}));
-
-// Запускаємо сервер на вказаному порті
-app.listen(port, () => {
-  console.log(`Радіо працює на http://localhost:${port}`);
-  // Запускаємо автовідтворення при старті сервера
-  startAutoplay();
-});
+// Експортуємо глобальні змінні та функції для використання в серверних функціях Vercel
+module.exports = {
+  playlist,
+  trackDurations,
+  currentTrack,
+  isPlaying,
+  currentTrackName,
+  currentPlaybackTime,
+  playbackTimer,
+  autoplayProcess,
+  startAutoplay,
+  getTrackDuration,
+};

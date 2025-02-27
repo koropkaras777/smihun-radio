@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs@22.x" 
+    }
+  },
+  "routes": [
+    { "src": "/stream", "dest": "api/stream.js" },
+    { "src": "/current-track", "dest": "api/current-track.js" },
+    { "src": "/playback-time", "dest": "api/playback-time.js" },
+    { "src": "/logo", "dest": "api/logo.js" }
+  ]
+}

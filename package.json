@@ -1,23 +1,20 @@
 {
-  "name": "radio-smihun",
+  "name": "radio-server",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Radio server with Express and ffmpeg",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
+  "author": "Dmytro",
   "license": "ISC",
   "dependencies": {
+    "express": "^4.19.2",
+    "fluent-ffmpeg": "^2.1.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "ffprobe": "^1.1.2",
-    "fluent-ffmpeg": "^2.1.3",
-    "mp3-duration": "^1.1.0",
-    "music-metadata": "^11.0.0",
-    "ws": "^8.18.1"
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
