@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Радіо "Сміхун"</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #ff9800, #ffeb3b);
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+    .radio-container {
+      background: linear-gradient(135deg, #ffeb3b, #ff9800);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 {
+      font-size: 2.5em;
+      margin: 0 0 20px;
+      color: #fff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    .logo {
+      width: 100px; /* Розмір логотипу, можна налаштувати */
+      height: auto;
+      margin-bottom: 15px;
+      border-radius: 10px; /* Опціонально, для закруглених країв */
+      cursor: pointer; /* Додаємо курсор для інтерактивності */
+      transition: transform 0.2s; /* Плавний перехід для анімації наведення */
+    }
+    .logo:hover {
+      transform: scale(1.1); /* Збільшення при наведенні */
+    }
+    .logo.pulse {
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+    #current-track {
+      font-size: 1.2em;
+      color: #fff;
+      margin-top: 15px;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+    }
+    p {
+      font-size: 1.2em;
+      color: #fff;
+      margin: 10px 0 0;
+    }
+    @media (max-width: 768px) {
+      body {
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="radio-container">
+    <img id="logoBtn" src="" alt="Логотип Радіо Сміхун" class="logo">
+    <h1>Радіо "Сміхун"</h1>
+    <div id="current-track">Завантаження...</div>
+    <p>Гумор в ефірі 24/7!</p>
+  </div>
+
+  <script>
+    // Глобальна змінна для URL сервера (за замовчуванням localhost:3000)
+    const SERVER_URL = 'http://192.168.31.213:3000';
+    // Примітка: Щоб змінити URL, просто онови значення SERVER_URL перед розгортанням або в коді.
+
+    const trackDisplay = document.getElementById('current-track');
+    const logoBtn = document.getElementById('logoBtn');
+    let audioElement = new Audio(`${SERVER_URL}/stream`); // Створюємо аудіоелемент програмно
+    let isPaused = true; // Радио автоматично на паузі при завантаженні сторінки
+    let currentTrackName = ''; // Зберігаємо поточну назву треку
+    let isAudioReady = false; // Флаг готовності аудіо
+
+    // Встановлюємо src логотипу динамічно після ініціалізації SERVER_URL
+    logoBtn.src = `${SERVER_URL}/logo`;
+
+    // Обробник помилки завантаження логотипу
+    logoBtn.onerror = () => {
+      console.error('Не вдалося завантажити логотип з сервера');
+      logoBtn.src = 'https://via.placeholder.com/100'; // Використовуємо плейсхолдер у разі помилки
+    };
+
+    // Функція для оновлення назви треку
+    function updateTrackName() {
+      fetch(`${SERVER_URL}/current-track`)
+        .then(response => response.json())
+        .then(data => {
+          const newTrackName = data.track;
+          trackDisplay.textContent = `Зараз грає: ${newTrackName}`;
+          
+          // Якщо назва треку змінилася, оновлюємо аудіо
+          if (newTrackName !== currentTrackName && newTrackName !== 'Немає треків' && newTrackName !== 'Завантаження...') {
+            currentTrackName = newTrackName;
+            audioElement.src = `${SERVER_URL}/stream`; // Оновлюємо джерело аудіо з SERVER_URL
+            syncAudio(!isPaused); // Синхронізуємо і відтворюємо, якщо не на паузі
+            // Залишаємо логотип у режимі "Pause" (без анімації), якщо трек на паузі
+            if (isPaused) {
+              logoBtn.classList.remove('pulse');
+            } else {
+              logoBtn.classList.add('pulse');
+            }
+          }
+        })
+        .catch(err => {
+          trackDisplay.textContent = 'Не вдалося завантажити назву треку';
+          console.error(err);
+        });
+    }
+
+    // Функція для синхронізації аудіо з сервером
+    function syncAudio(shouldPlay = false) {
+      fetch(`${SERVER_URL}/playback-time`)
+        .then(response => response.json())
+        .then(data => {
+          const { currentTime, totalTime, track } = data;
+          if (currentTime >= 0 && totalTime > 0) {
+            if (isAudioReady && audioElement.readyState >= 2) { // HAVE_CURRENT_DATA або вище
+              audioElement.currentTime = currentTime; // Встановлюємо поточний час відтворення
+              console.log(`Синхронізація з часом: ${currentTime} секунд (загальна тривалість: ${totalTime})`);
+              if (shouldPlay && !isPaused) {
+                audioElement.play().catch(err => {
+                  console.error('Не вдалося відтворити аудіо:', err);
+                  // Спробуємо ще раз після невеликої затримки
+                  setTimeout(() => syncAudio(shouldPlay), 1000);
+                });
+              }
+            } else {
+              console.log('Аудіо ще не готове, чекаємо...');
+              audioElement.onloadedmetadata = () => {
+                isAudioReady = true;
+                audioElement.currentTime = currentTime;
+                if (shouldPlay && !isPaused) {
+                  audioElement.play().catch(err => {
+                    console.error('Не вдалося відтворити аудіо після завантаження метаданих:', err);
+                    setTimeout(() => syncAudio(shouldPlay), 1000);
+                  });
+                }
+              };
+              audioElement.oncanplay = () => {
+                if (shouldPlay && !isPaused) {
+                  audioElement.play().catch(err => {
+                    console.error('Не вдалося відтворити аудіо після canplay:', err);
+                    setTimeout(() => syncAudio(shouldPlay), 1000);
+                  });
+                }
+              };
+            }
+          }
+        })
+        .catch(err => {
+          console.error('Не вдалося отримати поточний час відтворення:', err);
+          setTimeout(() => syncAudio(shouldPlay), 1000); // Повторна спроба через 1 секунду
+        });
+    }
+
+    // Обробник кліку на логотип (Play/Pause)
+    logoBtn.addEventListener('click', () => {
+      if (isPaused) {
+        // Якщо на паузі, синхронізуємо з поточним часом на сервері і продовжуємо
+        syncAudio(true);
+        isPaused = false;
+        logoBtn.classList.add('pulse'); // Додаємо анімацію, коли грає
+      } else {
+        // Якщо грає, ставимо на паузу
+        audioElement.pause();
+        isPaused = true;
+        logoBtn.classList.remove('pulse'); // Знімаємо анімацію, коли на паузі
+      }
+    });
+
+    // Оновлюємо назву треку одразу і кожні 5 секунд
+    updateTrackName();
+    setInterval(updateTrackName, 5000);
+
+    // Ініціалізація аудіо
+    audioElement.onloadedmetadata = () => {
+      isAudioReady = true;
+      syncAudio(false); // Синхронізуємо, але не відтворюємо автоматично
+    };
+
+    audioElement.oncanplay = () => {
+      // Не викликаємо play() автоматично, щоб уникнути NotAllowedError
+    };
+
+    // Обробка завершення треку на клієнті
+    audioElement.onended = () => {
+      isPaused = false;
+      // Залишаємо логотип у режимі "Pause" (з анімацією), якщо трек уже грає на сервері
+      logoBtn.classList.add('pulse');
+    };
+
+    // Синхронізація з сервером при помилках або змінах
+    audioElement.onerror = () => {
+      console.error('Помилка аудіоелемента');
+      syncAudio(false); // Синхронізуємо, але не відтворюємо автоматично
+    };
+  </script>
+</body>
+</html>
