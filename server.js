@@ -18,6 +18,15 @@ function formatTime(seconds) {
   return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
+// Функція для перемішування масиву (алгоритм Фішера-Єйтса)
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]]; // Обмін елементів
+  }
+  return array;
+}
+
 const getPlaylist = () => {
   const musicDir = './music';
   return fs.readdirSync(musicDir)
@@ -58,7 +67,13 @@ function startAutoplay() {
   }
 
   const playNextTrack = () => {
-    if (currentTrack >= playlist.length) currentTrack = 0;
+    if (currentTrack >= playlist.length) {
+      // Якщо досягнуто кінця плейлиста, перемішуємо його і скидаємо currentTrack
+      playlist = shuffleArray([...getPlaylist()]); // Створюємо нову копію плейлиста і перемішуємо
+      currentTrack = 0;
+      trackDurations = {}; // Очищаємо кеш тривалостей, щоб повторно отримати їх для нового порядку
+    }
+
     const track = playlist[currentTrack];
     currentTrackName = path.basename(track, '.mp3');
 
@@ -229,8 +244,9 @@ app.use(cors({
   credentials: true,
 }));
 
+// Запускаємо сервер на вказаному порті
 app.listen(port, () => {
-  console.log(`Радіо працює на http://192.168.31.213:${port}`);
+  console.log(`Радіо працює на http://localhost:${port}`);
   // Запускаємо автовідтворення при старті сервера
   startAutoplay();
 });
